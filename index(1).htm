@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sonnet 4 – Bedrock Price Calculator</title>
+    <style>
+      :root { --bg:#0b1220; --card:#10192e; --text:#e9eefc; --muted:#9bb1ff; --accent:#ff9900; }
+      *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial}
+      .wrap{max-width:860px;margin:40px auto;padding:0 16px}
+      .card{background:var(--card);padding:20px;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+      h1{margin:0 0 6px;font-size:24px} p.m{color:var(--muted);margin:0 0 18px}
+      .row{display:flex;gap:12px;flex-wrap:wrap}
+      .col{flex:1 1 320px}
+      textarea{width:100%;padding:12px 12px;border-radius:10px;border:1px solid #243049;background:#0c1426;color:var(--text);resize:vertical}
+      .or{display:flex;align-items:center;gap:8px;margin:12px 0;color:#7c8ebb}
+      .or:before,.or:after{content:"";height:1px;background:#253355;flex:1}
+      .files{border:1px dashed #2c3a61;border-radius:10px;padding:14px;text-align:center;background:#0c1426}
+      .btn{appearance:none;border:0;border-radius:10px;padding:12px 16px;background:var(--accent);color:#111;font-weight:700;cursor:pointer;width:100%}
+      .btn:disabled{opacity:.5;cursor:not-allowed}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .mut{color:#86a0ff;font-size:13px}
+      .k{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #203158}
+      .k:last-child{border-bottom:0}
+      .val{font-weight:700}
+      .footer{margin-top:14px;color:#7c8ebb;font-size:12px}
+      .hidden{display:none}
+      label{display:block;margin:0 0 6px}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Sonnet 4 – Bedrock Price Calculator</h1>
+        <p class="m">Type a prompt <em>or</em> upload an image/PDF. Get instant token counts, cost per request, plus weekly & monthly estimates.</p>
+
+        <div class="row">
+          <div class="col">
+            <label for="prompt">Prompt (optional)</label>
+            <textarea id="prompt" rows="8" placeholder="Type your prompt here…"></textarea>
+          </div>
+
+          <div class="col">
+            <div class="or">or</div>
+            <div class="files">
+              <input id="files" type="file" multiple accept="image/*,.pdf,.txt" />
+              <div class="mut" style="margin-top:6px">Images: 1600 tokens each • PDFs: auto page count • Text: auto estimate</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px">
+          <button class="btn" id="calcBtn">Calculate</button>
+          <span id="hint" class="mut" style="margin-left:10px;display:block;text-align:center;margin-top:8px"></span>
+        </div>
+
+        <div id="out" class="hidden" style="margin-top:18px">
+          <div class="grid">
+            <div class="card">
+              <h3 style="margin:0 0 8px">Tokens</h3>
+              <div class="k"><span>Input</span><span class="val" id="inTok">-</span></div>
+              <div class="k"><span>Output (est.)</span><span class="val" id="outTok">-</span></div>
+              <div class="k"><span>Breakdown</span><span class="val" id="bd">-</span></div>
+            </div>
+            <div class="card">
+              <h3 style="margin:0 0 8px">Price per Request</h3>
+              <div class="k"><span>Input</span><span class="val" id="inCost">$-</span></div>
+              <div class="k"><span>Output</span><span class="val" id="outCost">$-</span></div>
+              <div class="k"><span>Total</span><span class="val" id="total">$-</span></div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:10px">
+            <h3 style="margin:0 0 8px">Projections (100 requests/day)</h3>
+            <div class="k"><span>Weekly</span><span class="val" id="wk">$-</span></div>
+            <div class="k"><span>Monthly</span><span class="val" id="mo">$-</span></div>
+          </div>
+
+          <div class="footer" id="pricing"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const calcBtn = document.getElementById("calcBtn");
+      const hint = document.getElementById("hint");
+      const out = document.getElementById("out");
+
+      async function calc() {
+        hint.textContent = "Calculating…";
+        out.classList.add("hidden");
+        const filesInput = document.getElementById("files");
+        const prompt = document.getElementById("prompt").value.trim();
+
+        let response;
+        try {
+          if (filesInput.files && filesInput.files.length > 0) {
+            const formData = new FormData();
+            for (const f of filesInput.files) formData.append("files", f);
+            response = await fetch("api/calc", { method: "POST", body: formData });
+          } else {
+            if (!prompt) {
+              hint.textContent = "Please enter a prompt or upload files";
+              return;
+            }
+            response = await fetch("api/calc", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text_input: prompt })
+            });
+          }
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            hint.textContent = "Error: " + (errorData.error || response.statusText);
+            return;
+          }
+
+          const data = await response.json();
+          if (!data || !data.success) {
+            hint.textContent = "Error: " + (data.error || "Unknown error");
+            return;
+          }
+          hint.textContent = "";
+
+          document.getElementById("inTok").textContent = data.tokens.input.toLocaleString();
+          document.getElementById("outTok").textContent = data.tokens.output.toLocaleString();
+          const bd = data.tokens.breakdown;
+          const bdText = `text=${(bd.text_tokens||0).toLocaleString()}, images=${(bd.image_tokens||0).toLocaleString()}, docs=${(bd.document_tokens||0).toLocaleString()}`;
+          document.getElementById("bd").textContent = bdText;
+          document.getElementById("inCost").textContent = "$" + data.cost.input.toFixed(6);
+          document.getElementById("outCost").textContent = "$" + data.cost.output.toFixed(6);
+          document.getElementById("total").textContent = "$" + data.cost.total_per_request.toFixed(6);
+          document.getElementById("wk").textContent = "$" + data.cost.weekly_estimate.toFixed(4);
+          document.getElementById("mo").textContent = "$" + data.cost.monthly_estimate.toFixed(4);
+          document.getElementById("pricing").textContent = `Model: ${data.model_id} | Input $${data.pricing_per_1k.input}/1K tokens • Output $${data.pricing_per_1k.output}/1K tokens`;
+
+          out.classList.remove("hidden");
+        } catch (error) {
+          console.error("Error:", error);
+          hint.textContent = "Error: " + error.message;
+        }
+      }
+
+      calcBtn.addEventListener("click", calc);
+      
+      // Allow Enter to calculate
+      document.getElementById("prompt").addEventListener("keydown", function(e) {
+        if (e.ctrlKey && e.key === 'Enter') {
+          calc();
+        }
+      });
+    </script>
+  </body>
+</html>
